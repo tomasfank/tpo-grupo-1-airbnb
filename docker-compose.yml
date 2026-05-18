@@ -1,0 +1,83 @@
+services:
+  backend:
+    build: ./backend
+    container_name: airbnb-tpo-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - MONGO_URL=mongodb://mongo:27017/airbnb_tpo
+      - POSTGRES_URL=postgres://airbnb:airbnb@postgres:5432/airbnb_tpo
+      - CASSANDRA_CONTACT_POINTS=cassandra
+      - CASSANDRA_LOCAL_DC=datacenter1
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=airbnb_tpo_2026
+    depends_on:
+      - mongo
+      - postgres
+      - cassandra
+      - neo4j
+    volumes:
+      - ./backend/src:/app/src
+    command: npm run dev
+
+  frontend:
+    build: ./frontend
+    container_name: airbnb-tpo-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:3000/api
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend/src:/app/src
+    command: npm run dev -- --host 0.0.0.0
+
+  mongo:
+    image: mongo:7
+    container_name: airbnb-tpo-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  postgres:
+    image: postgres:17
+    container_name: airbnb-tpo-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=airbnb_tpo
+      - POSTGRES_USER=airbnb
+      - POSTGRES_PASSWORD=airbnb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  cassandra:
+    image: cassandra:5
+    container_name: airbnb-tpo-cassandra
+    ports:
+      - "9042:9042"
+    environment:
+      - CASSANDRA_CLUSTER_NAME=airbnb_tpo_cluster
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+
+  neo4j:
+    image: neo4j:5
+    container_name: airbnb-tpo-neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/airbnb_tpo_2026
+    volumes:
+      - neo4j_data:/data
+
+volumes:
+  mongo_data:
+  postgres_data:
+  cassandra_data:
+  neo4j_data:
