@@ -3,7 +3,8 @@ import cors from 'cors';
 import morgan from 'morgan';
 import { v4 as uuid } from 'uuid';
 import { db } from './data.js';
-import { ok, fail, findUser, findProp, overlap, nightsBetween, hydrateReserva, distanceKm, recalcRatings } from './utils.js';
+import { ok, fail, findUser, findProp, nightsBetween, hydrateReserva, distanceKm, recalcRatings } from './utils.js';
+import { pool, initPostgres, mapReserva, getReservaById } from './postgres.js';
 
 const app = express();
 app.use(cors());
@@ -11,16 +12,68 @@ app.use(express.json());
 app.use(morgan('dev'));
 const PORT = process.env.PORT || 3000;
 
-app.get('/api/health', (_, res) => ok(res, { status: 'running', mode: 'memory', databases: ['mongo','postgres','cassandra','neo4j'] }));
-app.get('/api/dashboard', (_, res) => ok(res, {
-  usuarios: db.usuarios.length,
-  anfitriones: db.usuarios.filter(u=>u.tipo==='anfitrion').length,
-  huespedes: db.usuarios.filter(u=>u.tipo==='huesped').length,
-  propiedades: db.propiedades.filter(p=>p.estado==='activa').length,
-  reservas: db.reservas.length,
-  reservasActivas: db.reservas.filter(r=>r.estado==='confirmada').length,
-  resenias: db.resenias.length
-}));
+await initPostgres();
+
+async function getReservasFromPostgres(filters = {}) {
+  const { huesped_id, anfitrion_id, propiedad_id, estado } = filters;
+
+  const conditions = [];
+  const values = [];
+
+  if (huesped_id) {
+    values.push(huesped_id);
+    conditions.push(`r.huesped_id = $${values.length}`);
+  }
+
+  if (anfitrion_id) {
+    values.push(anfitrion_id);
+    conditions.push(`r.anfitrion_id = $${values.length}`);
+  }
+
+  if (propiedad_id) {
+    values.push(propiedad_id);
+    conditions.push(`r.propiedad_id = $${values.length}`);
+  }
+
+  if (estado) {
+    values.push(estado);
+    conditions.push(`r.estado = $${values.length}`);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const { rows } = await pool.query(`
+    SELECT r.*, p.id AS pago_id, p.monto, p.metodo, p.estado AS pago_estado
+    FROM reservas r
+    JOIN pagos p ON p.reserva_id = r.id
+    ${where}
+    ORDER BY r.created_at DESC
+  `, values);
+
+  return rows.map(row => hydrateReserva(mapReserva(row)));
+}
+
+app.get('/api/health', (_, res) => ok(res, { status: 'running', mode: 'postgres-reservas-pagos', databases: ['mongo','postgres','cassandra','neo4j'] }));
+
+app.get('/api/dashboard', async (_, res) => {
+  const reservasResult = await pool.query(`
+    SELECT
+      COUNT(*)::int AS reservas,
+      COUNT(*) FILTER (WHERE estado = 'confirmada')::int AS reservas_activas
+    FROM reservas
+  `);
+
+  ok(res, {
+    usuarios: db.usuarios.length,
+    anfitriones: db.usuarios.filter(u=>u.tipo==='anfitrion').length,
+    huespedes: db.usuarios.filter(u=>u.tipo==='huesped').length,
+    propiedades: db.propiedades.filter(p=>p.estado==='activa').length,
+    reservas: reservasResult.rows[0].reservas,
+    reservasActivas: reservasResult.rows[0].reservas_activas,
+    resenias: db.resenias.length
+  });
+});
+
 app.post('/api/auth/login-simulado', (req, res) => {
   const user = findUser(req.body.usuario_id);
   if (!user) return fail(res, 404, 'Usuario no encontrado');
@@ -31,6 +84,7 @@ app.get('/api/usuarios', (req, res) => {
   const { tipo } = req.query;
   ok(res, tipo ? db.usuarios.filter(u => u.tipo === tipo) : db.usuarios);
 });
+
 app.post('/api/usuarios', (req, res) => {
   const { nombre, email, telefono, tipo, bio } = req.body;
   if (!nombre || !email || !tipo) return fail(res, 400, 'nombre, email y tipo son obligatorios');
@@ -39,12 +93,14 @@ app.post('/api/usuarios', (req, res) => {
   db.usuarios.push(user);
   ok(res, user, 201);
 });
+
 app.get('/api/usuarios/:id', (req, res) => {
   const user = findUser(req.params.id);
   if (!user) return fail(res, 404, 'Usuario no encontrado');
   const propiedades = db.propiedades.filter(p => p.anfitrion_id === user.id && p.estado !== 'eliminada');
   ok(res, { ...user, propiedades });
 });
+
 app.put('/api/usuarios/:id', (req, res) => {
   const user = findUser(req.params.id);
   if (!user) return fail(res, 404, 'Usuario no encontrado');
@@ -63,6 +119,7 @@ app.get('/api/propiedades', (req, res) => {
   if (lat && lng && radioKm) result = result.filter(p => distanceKm(Number(lat), Number(lng), p.ubicacion.coords.coordinates[1], p.ubicacion.coords.coordinates[0]) <= Number(radioKm));
   ok(res, result.map(p => ({ ...p, anfitrion: findUser(p.anfitrion_id) })));
 });
+
 app.post('/api/propiedades', (req, res) => {
   const anfitrion = findUser(req.body.anfitrion_id);
   if (!anfitrion || anfitrion.tipo !== 'anfitrion') return fail(res, 400, 'Debe indicar un anfitrión válido');
@@ -72,11 +129,13 @@ app.post('/api/propiedades', (req, res) => {
   db.propiedades.push(prop);
   ok(res, prop, 201);
 });
+
 app.get('/api/propiedades/:id', (req, res) => {
   const prop = findProp(req.params.id);
   if (!prop) return fail(res, 404, 'Propiedad no encontrada');
   ok(res, { ...prop, anfitrion: findUser(prop.anfitrion_id), resenias: db.resenias.filter(r=>r.propiedad_id===prop.id) });
 });
+
 app.put('/api/propiedades/:id', (req, res) => {
   const prop = findProp(req.params.id);
   if (!prop) return fail(res, 404, 'Propiedad no encontrada');
@@ -85,70 +144,207 @@ app.put('/api/propiedades/:id', (req, res) => {
   if (req.body.cantidad_huespedes) prop.cantidad_huespedes = Number(req.body.cantidad_huespedes);
   ok(res, prop);
 });
+
 app.delete('/api/propiedades/:id', (req, res) => {
   const prop = findProp(req.params.id);
   if (!prop) return fail(res, 404, 'Propiedad no encontrada');
   prop.estado = 'eliminada';
   ok(res, prop);
 });
+
 app.get('/api/propiedades/:id/resenias', (req, res) => ok(res, db.resenias.filter(r => r.propiedad_id === req.params.id)));
 
-app.get('/api/reservas', (req, res) => {
-  const { huesped_id, anfitrion_id, propiedad_id, estado } = req.query;
-  let result = db.reservas;
-  if (huesped_id) result = result.filter(r => r.huesped_id === huesped_id);
-  if (anfitrion_id) result = result.filter(r => r.anfitrion_id === anfitrion_id);
-  if (propiedad_id) result = result.filter(r => r.propiedad_id === propiedad_id);
-  if (estado) result = result.filter(r => r.estado === estado);
-  ok(res, result.map(hydrateReserva));
+app.get('/api/reservas', async (req, res) => {
+  const reservas = await getReservasFromPostgres(req.query);
+  ok(res, reservas);
 });
-app.post('/api/reservas', (req, res) => {
+
+app.post('/api/reservas', async (req, res) => {
   const { huesped_id, propiedad_id, fecha_inicio, fecha_fin, cantidad_huespedes, pago } = req.body;
-  const huesped = findUser(huesped_id); const prop = findProp(propiedad_id);
+
+  const huesped = findUser(huesped_id);
+  const prop = findProp(propiedad_id);
+
   if (!huesped || huesped.tipo !== 'huesped') return fail(res, 400, 'Debe indicar un huésped válido');
   if (!prop || prop.estado !== 'activa') return fail(res, 400, 'Propiedad no disponible');
   if (!fecha_inicio || !fecha_fin || new Date(fecha_inicio) >= new Date(fecha_fin)) return fail(res, 400, 'Rango de fechas inválido');
   if (Number(cantidad_huespedes) > Number(prop.cantidad_huespedes)) return fail(res, 400, 'La cantidad de huéspedes supera la capacidad máxima');
-  const ocupada = db.reservas.some(r => r.propiedad_id === propiedad_id && r.estado === 'confirmada' && overlap(fecha_inicio, fecha_fin, r.fecha_inicio, r.fecha_fin));
-  if (ocupada) return fail(res, 409, 'La propiedad no está disponible en ese rango');
-  const noches = nightsBetween(fecha_inicio, fecha_fin);
-  const monto = noches * Number(prop.precio_noche);
-  const reserva = { id: uuid(), huesped_id, anfitrion_id: prop.anfitrion_id, propiedad_id, fecha_inicio, fecha_fin, cantidad_huespedes: Number(cantidad_huespedes), estado: 'confirmada', pago: { monto, metodo: pago?.metodo || 'tarjeta', estado: pago?.estado || 'pendiente' }, created_at: new Date().toISOString() };
-  db.reservas.push(reserva);
-  ok(res, hydrateReserva(reserva), 201);
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const ocupadas = await client.query(`
+      SELECT id
+      FROM reservas
+      WHERE propiedad_id = $1
+        AND estado = 'confirmada'
+        AND fecha_inicio < $3
+        AND fecha_fin > $2
+      LIMIT 1
+    `, [propiedad_id, fecha_inicio, fecha_fin]);
+
+    if (ocupadas.rows.length) {
+      await client.query('ROLLBACK');
+      return fail(res, 409, 'La propiedad no está disponible en ese rango');
+    }
+
+    const noches = nightsBetween(fecha_inicio, fecha_fin);
+    const monto = noches * Number(prop.precio_noche);
+    const reservaId = uuid();
+    const pagoId = uuid();
+
+    await client.query(`
+      INSERT INTO reservas (
+        id,
+        huesped_id,
+        anfitrion_id,
+        propiedad_id,
+        fecha_inicio,
+        fecha_fin,
+        cantidad_huespedes,
+        estado
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    `, [
+      reservaId,
+      huesped_id,
+      prop.anfitrion_id,
+      propiedad_id,
+      fecha_inicio,
+      fecha_fin,
+      Number(cantidad_huespedes),
+      'confirmada'
+    ]);
+
+    await client.query(`
+      INSERT INTO pagos (
+        id,
+        reserva_id,
+        monto,
+        metodo,
+        estado
+      )
+      VALUES ($1,$2,$3,$4,$5)
+    `, [
+      pagoId,
+      reservaId,
+      monto,
+      pago?.metodo || 'tarjeta',
+      pago?.estado || 'pendiente'
+    ]);
+
+    await client.query('COMMIT');
+
+    const reserva = await getReservaById(reservaId);
+    ok(res, hydrateReserva(reserva), 201);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error(error);
+    fail(res, 500, 'Error al crear la reserva');
+  } finally {
+    client.release();
+  }
 });
-app.patch('/api/reservas/:id/cancelar', (req, res) => {
-  const reserva = db.reservas.find(r => r.id === req.params.id);
-  if (!reserva) return fail(res, 404, 'Reserva no encontrada');
-  reserva.estado = 'cancelada';
-  ok(res, hydrateReserva(reserva));
-});
-app.patch('/api/reservas/:id/finalizar', (req, res) => {
-  const reserva = db.reservas.find(r => r.id === req.params.id);
-  if (!reserva) return fail(res, 404, 'Reserva no encontrada');
-  reserva.estado = 'completada'; reserva.pago.estado = 'completado';
-  ok(res, hydrateReserva(reserva));
-});
-app.patch('/api/reservas/:id/pago', (req, res) => {
-  const reserva = db.reservas.find(r => r.id === req.params.id);
-  if (!reserva) return fail(res, 404, 'Reserva no encontrada');
-  reserva.pago.estado = req.body.estado || reserva.pago.estado;
-  reserva.pago.metodo = req.body.metodo || reserva.pago.metodo;
+
+app.patch('/api/reservas/:id/cancelar', async (req, res) => {
+  const { rows } = await pool.query(`
+    UPDATE reservas
+    SET estado = 'cancelada'
+    WHERE id = $1
+    RETURNING id
+  `, [req.params.id]);
+
+  if (!rows.length) return fail(res, 404, 'Reserva no encontrada');
+
+  const reserva = await getReservaById(req.params.id);
   ok(res, hydrateReserva(reserva));
 });
 
-app.post('/api/resenias', (req, res) => {
+app.patch('/api/reservas/:id/finalizar', async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const updated = await client.query(`
+      UPDATE reservas
+      SET estado = 'completada'
+      WHERE id = $1
+      RETURNING id
+    `, [req.params.id]);
+
+    if (!updated.rows.length) {
+      await client.query('ROLLBACK');
+      return fail(res, 404, 'Reserva no encontrada');
+    }
+
+    await client.query(`
+      UPDATE pagos
+      SET estado = 'completado'
+      WHERE reserva_id = $1
+    `, [req.params.id]);
+
+    await client.query('COMMIT');
+
+    const reserva = await getReservaById(req.params.id);
+    ok(res, hydrateReserva(reserva));
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error(error);
+    fail(res, 500, 'Error al finalizar la reserva');
+  } finally {
+    client.release();
+  }
+});
+
+app.patch('/api/reservas/:id/pago', async (req, res) => {
+  const reserva = await getReservaById(req.params.id);
+  if (!reserva) return fail(res, 404, 'Reserva no encontrada');
+
+  await pool.query(`
+    UPDATE pagos
+    SET estado = $1,
+        metodo = $2
+    WHERE reserva_id = $3
+  `, [
+    req.body.estado || reserva.pago.estado,
+    req.body.metodo || reserva.pago.metodo,
+    req.params.id
+  ]);
+
+  const actualizada = await getReservaById(req.params.id);
+  ok(res, hydrateReserva(actualizada));
+});
+
+app.post('/api/resenias', async (req, res) => {
   const { reserva_id, calificacion, comentario } = req.body;
-  const reserva = db.reservas.find(r => r.id === reserva_id);
+  const reserva = await getReservaById(reserva_id);
+
   if (!reserva) return fail(res, 404, 'Reserva no encontrada');
   if (reserva.estado !== 'completada') return fail(res, 400, 'Solo se puede reseñar una reserva completada');
   if (db.resenias.some(r => r.reserva_id === reserva_id)) return fail(res, 409, 'La reserva ya tiene reseña');
+
   const score = Number(calificacion);
   if (score < 1 || score > 5) return fail(res, 400, 'La calificación debe estar entre 1 y 5');
-  const resenia = { id: uuid(), reserva_id, propiedad_id: reserva.propiedad_id, huesped_id: reserva.huesped_id, anfitrion_id: reserva.anfitrion_id, calificacion: score, comentario: comentario || '', created_at: new Date().toISOString() };
-  db.resenias.push(resenia); recalcRatings(reserva.propiedad_id, reserva.anfitrion_id);
+
+  const resenia = {
+    id: uuid(),
+    reserva_id,
+    propiedad_id: reserva.propiedad_id,
+    huesped_id: reserva.huesped_id,
+    anfitrion_id: reserva.anfitrion_id,
+    calificacion: score,
+    comentario: comentario || '',
+    created_at: new Date().toISOString()
+  };
+
+  db.resenias.push(resenia);
+  recalcRatings(reserva.propiedad_id, reserva.anfitrion_id);
   ok(res, resenia, 201);
 });
+
 app.get('/api/resenias', (_, res) => ok(res, db.resenias));
 
 app.use((_, res) => fail(res, 404, 'Endpoint no encontrado'));
