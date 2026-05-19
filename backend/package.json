@@ -4,6 +4,6 @@
   "type": "module",
   "main": "src/server.js",
   "scripts": { "dev": "nodemon src/server.js", "start": "node src/server.js" },
-  "dependencies": { "cors": "latest", "express": "latest", "morgan": "latest", "pg": "latest", "uuid": "latest" },
+  "dependencies": { "cors": "latest", "express": "latest", "morgan": "latest","pg": "latest", "uuid": "latest" },
   "devDependencies": { "nodemon": "latest" }
 }
