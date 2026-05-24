@@ -86,6 +86,10 @@ export async function updateUsuario(id, patch) {
   );
 }
 
+export async function deleteUsuario(id) {
+  await getDb().collection('usuarios').deleteOne({ id });
+}
+
 // ── Propiedades ───────────────────────────────────────────────────────────────
 
 export async function getPropiedades({ ciudad, tipo, precioMin, precioMax, anfitrion_id, lat, lng, radioKm } = {}) {

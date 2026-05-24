@@ -7,7 +7,7 @@ import { v4 as uuid } from 'uuid';
 import { ok, fail, nightsBetween } from './utils.js';
 import { pool, initPostgres, mapReserva, getReservaById } from './postgres.js';
 import {
-  initMongo, getUsuarios, getUserById, getUserByEmail, createUsuario, updateUsuario,
+  initMongo, getUsuarios, getUserById, getUserByEmail, createUsuario, updateUsuario, deleteUsuario,
   getPropiedades, getPropiedadById, createPropiedad, updatePropiedad,
   recalcRatings, cacheResenia, getDashboardMongo,
 } from './mongo.js';
@@ -127,13 +127,16 @@ app.get('/api/usuarios', async (req, res) => {
 });
 
 app.post('/api/usuarios', async (req, res) => {
-  const { nombre, email, telefono, tipo, bio } = req.body;
+  const { nombre, email, password, telefono, tipo, bio } = req.body;
   if (!nombre || !email || !tipo) return fail(res, 400, 'nombre, email y tipo son obligatorios');
-  if (!['huesped', 'anfitrion'].includes(tipo)) return fail(res, 400, 'tipo debe ser huesped o anfitrion');
+  if (!['huesped', 'anfitrion', 'admin'].includes(tipo)) return fail(res, 400, 'tipo debe ser huesped, anfitrion o admin');
+  const existing = await getUserByEmail(email);
+  if (existing) return fail(res, 409, 'El email ya está registrado');
   const doc = {
     id: uuid(), nombre, email,
     telefono: telefono || '', tipo,
     bio: bio || '', promedio_rating: 0,
+    password_hash: password ? await bcrypt.hash(password, 10) : null,
     created_at: new Date().toISOString(),
   };
   const user = await createUsuario(doc);
@@ -156,6 +159,13 @@ app.put('/api/usuarios/:id', async (req, res) => {
   const updated = await updateUsuario(req.params.id, patch);
   await syncUsuario(updated);
   ok(res, updated);
+});
+
+app.delete('/api/usuarios/:id', async (req, res) => {
+  const exists = await getUserById(req.params.id);
+  if (!exists) return fail(res, 404, 'Usuario no encontrado');
+  await deleteUsuario(req.params.id);
+  ok(res, { id: req.params.id });
 });
 
 // ── Propiedades (MongoDB) ─────────────────────────────────────────────────────
@@ -188,7 +198,7 @@ app.post('/api/propiedades', async (req, res) => {
   const prop = await createPropiedad(doc);
   await syncPropiedad(prop);
   ok(res, prop, 201);
-});
+});   
 
 app.get('/api/propiedades/:id', async (req, res) => {
   const prop = await getPropiedadById(req.params.id);

@@ -23,6 +23,12 @@ export function AppProvider({ children }) {
   const notify = (message, type = 'success') => setToast({ message, type });
   const clearToast = () => setToast(null);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 20000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   const persistUser = u => {
     if (u) localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
     else localStorage.removeItem(STORAGE_KEY);

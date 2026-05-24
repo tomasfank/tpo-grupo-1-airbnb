@@ -21,13 +21,13 @@ const canAccess = (page, user) => {
 
 function App() {
   const [page, setPage] = useState('dashboard');
-  const { loading, user } = useApp();
+  const { loading, user, clearToast } = useApp();
 
   useEffect(() => {
     if (!canAccess(page, user)) setPage('dashboard');
   }, [user, page]);
 
-  const setPageSafe = (p) => { if (canAccess(p, user)) setPage(p); };
+  const setPageSafe = (p) => { if (canAccess(p, user)) { clearToast(); setPage(p); } };
   const safePage = canAccess(page, user) ? page : 'dashboard';
 
   const pages = { dashboard:<Dashboard setPage={setPageSafe}/>, explorar:<Explorar/>, reservas:<Reservas/>, anfitrion:<Anfitrion/>, usuarios:<Usuarios/>, resenias:<Resenias/>, login:<Login/> };
