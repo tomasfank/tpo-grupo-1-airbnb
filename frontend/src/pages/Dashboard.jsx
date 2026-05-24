@@ -1,10 +1,16 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useApp } from '../state/AppContext';
 import { Badge, Money } from '../components/Common';
 
 export default function Dashboard({ setPage }) {
   const { dashboard, propiedades, reservas, user } = useApp();
-  const next = reservas.filter(r => r.estado === 'confirmada').slice(0,3);
+  const next = useMemo(() => {
+    if (!user) return [];
+    const confirmed = reservas.filter(r => r.estado === 'confirmada');
+    if (user.tipo === 'huesped')   return confirmed.filter(r => r.huesped_id   === user.id).slice(0, 3);
+    if (user.tipo === 'anfitrion') return confirmed.filter(r => r.anfitrion_id === user.id).slice(0, 3);
+    return confirmed.slice(0, 3);
+  }, [reservas, user]);
   return <div className="stack">
     <section className="hero"><div><Badge tone="pink">Versión mejorada</Badge><h2>Gestión de alojamientos, reservas, pagos y reseñas</h2><p>La app cubre el flujo central del enunciado: usuarios por rol, publicación de propiedades, reserva con pago embebido, cancelación/finalización y reseñas con rating promedio.</p><div className="heroActions"><button onClick={()=>setPage('explorar')}>Buscar alojamiento</button><button className="secondary" onClick={()=>setPage('anfitrion')}>Publicar propiedad</button></div></div><div className="heroCard"><b>Sesión actual</b><p>{user ? `${user.nombre} · ${user.tipo}` : 'Sin usuario seleccionado'}</p><small>Entrá desde <b>Mi cuenta</b> con email y contraseña para operar como huésped o anfitrión.</small></div></section>
     <section className="stats">{Object.entries(dashboard || {}).map(([k,v]) => <article key={k} className="stat"><span>{k}</span><strong>{v}</strong></article>)}</section>

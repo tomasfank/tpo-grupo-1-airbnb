@@ -1,5 +1,6 @@
 // UUIDs fijos para que las referencias en Postgres sobrevivan reinicios
 export const SEED_IDS = {
+  admin:  '00000000-0000-0000-0000-000000000001',
   host1:  '11111111-0001-0001-0001-000000000001',
   host2:  '11111111-0002-0001-0001-000000000002',
   guest1: '22222222-0001-0001-0001-000000000001',
@@ -10,7 +11,8 @@ export const SEED_IDS = {
 };
 
 export const SEED_USUARIOS = [
-  { id: SEED_IDS.host1,  nombre: 'Ana Gómez',        email: 'ana.host@mail.com',    telefono: '1111-2222', tipo: 'anfitrion', bio: 'Host con foco en estadías urbanas.',      promedio_rating: 4.5, created_at: '2025-01-01T00:00:00.000Z' },
+  { id: SEED_IDS.admin,  nombre: 'Admin TPO',         email: 'admin@mail.com',       telefono: '0000-0000', tipo: 'admin',     bio: 'Administrador del sistema.',             promedio_rating: 0,   created_at: '2025-01-01T00:00:00.000Z' },
+  { id: SEED_IDS.host1,  nombre: 'Ana Gómez',         email: 'ana.host@mail.com',    telefono: '1111-2222', tipo: 'anfitrion', bio: 'Host con foco en estadías urbanas.',      promedio_rating: 4.5, created_at: '2025-01-01T00:00:00.000Z' },
   { id: SEED_IDS.host2,  nombre: 'Carlos Pérez',      email: 'carlos.host@mail.com', telefono: '3333-4444', tipo: 'anfitrion', bio: 'Administra alojamientos familiares.',     promedio_rating: 0,   created_at: '2025-01-01T00:00:00.000Z' },
   { id: SEED_IDS.guest1, nombre: 'Lucía Fernández',   email: 'lucia@mail.com',       telefono: '5555-6666', tipo: 'huesped',   bio: 'Viaja por trabajo y escapadas.',         promedio_rating: 0,   created_at: '2025-01-01T00:00:00.000Z' },
   { id: SEED_IDS.guest2, nombre: 'Martín Silva',      email: 'martin@mail.com',      telefono: '7777-8888', tipo: 'huesped',   bio: 'Busca alojamientos tranquilos.',         promedio_rating: 0,   created_at: '2025-01-01T00:00:00.000Z' },

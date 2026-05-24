@@ -2,18 +2,19 @@ import React from 'react';
 import { BedDouble, CalendarCheck, Home, HousePlus, KeyRound, LayoutDashboard, LogIn, LogOut, MessageSquareText, UserRoundCog, UsersRound } from 'lucide-react';
 import { useApp } from '../state/AppContext';
 
-const menu = [
-  ['dashboard','Inicio',LayoutDashboard],
-  ['explorar','Explorar',Home],
-  ['reservas','Reservas',CalendarCheck],
-  ['anfitrion','Anfitrión',HousePlus],
-  ['usuarios','Usuarios',UsersRound],
-  ['resenias','Reseñas',MessageSquareText],
-  ['login','Mi cuenta',KeyRound],
+const ALL_MENU = [
+  { id: 'dashboard', label: 'Inicio',    Icon: LayoutDashboard,   roles: null },
+  { id: 'explorar',  label: 'Explorar',  Icon: Home,              roles: null },
+  { id: 'reservas',  label: 'Reservas',  Icon: CalendarCheck,     roles: ['huesped','anfitrion','admin'] },
+  { id: 'anfitrion', label: 'Anfitrión', Icon: HousePlus,         roles: ['anfitrion'] },
+  { id: 'usuarios',  label: 'Usuarios',  Icon: UsersRound,        roles: ['admin'] },
+  { id: 'resenias',  label: 'Reseñas',   Icon: MessageSquareText, roles: ['huesped','anfitrion','admin'] },
+  { id: 'login',     label: 'Mi cuenta', Icon: KeyRound,          roles: null },
 ];
 
 export default function Layout({ page, setPage, children }) {
   const { user, logout, toast, clearToast } = useApp();
+  const menu = ALL_MENU.filter(item => !item.roles || (user?.tipo && item.roles.includes(user.tipo)));
   return <div className="shell">
     <aside className="sidebar">
       <div className="brand">
@@ -21,7 +22,7 @@ export default function Layout({ page, setPage, children }) {
         <div><b>Airbnb TPO</b><span>ID2 · NoSQL + SQL</span></div>
       </div>
       <nav className="menu">
-        {menu.map(([id,label,Icon]) => (
+        {menu.map(({ id, label, Icon }) => (
           <button key={id} className={page===id?'active':''} onClick={()=>setPage(id)}>
             <Icon size={18}/>{label}
           </button>
@@ -48,7 +49,7 @@ export default function Layout({ page, setPage, children }) {
     <main className="content">
       <header className="topbar">
         <div>
-          <h1>{menu.find(m=>m[0]===page)?.[1] || 'Airbnb TPO'}</h1>
+          <h1>{ALL_MENU.find(m=>m.id===page)?.label || 'Airbnb TPO'}</h1>
           <p>Demo funcional con API REST, login con bcrypt y persistencia en 4 bases.</p>
         </div>
         {user && <button className="ghost" onClick={logout}>Salir</button>}

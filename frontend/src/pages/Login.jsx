@@ -4,6 +4,7 @@ import { useApp } from '../state/AppContext';
 import { Field, Badge } from '../components/Common';
 
 const SEED_EMAILS = [
+  { email: 'admin@mail.com',       tipo: 'admin'     },
   { email: 'ana.host@mail.com',    tipo: 'anfitrion' },
   { email: 'carlos.host@mail.com', tipo: 'anfitrion' },
   { email: 'lucia@mail.com',       tipo: 'huesped'   },
