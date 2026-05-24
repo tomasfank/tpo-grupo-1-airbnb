@@ -1,8 +1,12 @@
 import { MongoClient } from 'mongodb';
+import bcrypt from 'bcryptjs';
 import { SEED_USUARIOS, SEED_PROPIEDADES } from './data.js';
 
 const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017/airbnb_tpo';
+const SEED_DEFAULT_PASSWORD = process.env.SEED_DEFAULT_PASSWORD || 'demo1234';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+const PUBLIC_USER_PROJECTION = { _id: 0, password_hash: 0 };
 
 let _db = null;
 
@@ -24,9 +28,21 @@ export async function initMongo(retries = 20) {
       await _db.collection('usuarios').createIndex({ id: 1 }, { unique: true });
       await _db.collection('propiedades').createIndex({ id: 1 }, { unique: true });
 
+      // Password hasheado para los usuarios de seed (permite login real con "demo1234")
+      const defaultHash = await bcrypt.hash(SEED_DEFAULT_PASSWORD, 10);
+
       // Seed: insertar solo si no existen (upsert por id)
       for (const u of SEED_USUARIOS) {
-        await _db.collection('usuarios').updateOne({ id: u.id }, { $setOnInsert: u }, { upsert: true });
+        await _db.collection('usuarios').updateOne(
+          { id: u.id },
+          { $setOnInsert: { ...u, password_hash: defaultHash } },
+          { upsert: true }
+        );
+        // Si el seed ya existía sin password_hash (carga previa), agregarlo
+        await _db.collection('usuarios').updateOne(
+          { id: u.id, password_hash: { $exists: false } },
+          { $set: { password_hash: defaultHash } }
+        );
       }
       for (const p of SEED_PROPIEDADES) {
         await _db.collection('propiedades').updateOne({ id: p.id }, { $setOnInsert: p }, { upsert: true });
@@ -45,11 +61,16 @@ export async function initMongo(retries = 20) {
 // ── Usuarios ──────────────────────────────────────────────────────────────────
 
 export function getUsuarios(filtro = {}) {
-  return getDb().collection('usuarios').find(filtro, { projection: { _id: 0 } }).toArray();
+  return getDb().collection('usuarios').find(filtro, { projection: PUBLIC_USER_PROJECTION }).toArray();
 }
 
 export function getUserById(id) {
-  return getDb().collection('usuarios').findOne({ id }, { projection: { _id: 0 } });
+  return getDb().collection('usuarios').findOne({ id }, { projection: PUBLIC_USER_PROJECTION });
+}
+
+// Devuelve el doc completo INCLUYENDO password_hash. Sólo usar en flows de auth.
+export function getUserByEmail(email) {
+  return getDb().collection('usuarios').findOne({ email }, { projection: { _id: 0 } });
 }
 
 export async function createUsuario(doc) {
@@ -61,7 +82,7 @@ export async function updateUsuario(id, patch) {
   return getDb().collection('usuarios').findOneAndUpdate(
     { id },
     { $set: patch },
-    { returnDocument: 'after', projection: { _id: 0 } }
+    { returnDocument: 'after', projection: PUBLIC_USER_PROJECTION }
   );
 }
 

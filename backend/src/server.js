@@ -1,12 +1,13 @@
 import express from 'express';
 import cors    from 'cors';
 import morgan  from 'morgan';
+import bcrypt  from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 
 import { ok, fail, nightsBetween } from './utils.js';
 import { pool, initPostgres, mapReserva, getReservaById } from './postgres.js';
 import {
-  initMongo, getUsuarios, getUserById, createUsuario, updateUsuario,
+  initMongo, getUsuarios, getUserById, getUserByEmail, createUsuario, updateUsuario,
   getPropiedades, getPropiedadById, createPropiedad, updatePropiedad,
   recalcRatings, cacheResenia, getDashboardMongo,
 } from './mongo.js';
@@ -76,6 +77,46 @@ app.post('/api/auth/login-simulado', async (req, res) => {
   const user = await getUserById(req.body.usuario_id);
   if (!user) return fail(res, 404, 'Usuario no encontrado');
   ok(res, user);
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  const { nombre, email, password, tipo, telefono, bio } = req.body;
+  if (!nombre || !email || !password || !tipo)
+    return fail(res, 400, 'nombre, email, password y tipo son obligatorios');
+  if (!['huesped', 'anfitrion'].includes(tipo))
+    return fail(res, 400, 'tipo debe ser huesped o anfitrion');
+  if (password.length < 6)
+    return fail(res, 400, 'La contraseña debe tener al menos 6 caracteres');
+
+  const existing = await getUserByEmail(email);
+  if (existing) return fail(res, 409, 'El email ya está registrado');
+
+  const password_hash = await bcrypt.hash(password, 10);
+  const doc = {
+    id: uuid(), nombre, email,
+    telefono: telefono || '', tipo,
+    bio: bio || '', promedio_rating: 0,
+    password_hash,
+    created_at: new Date().toISOString(),
+  };
+  await createUsuario(doc);
+  const user = await getUserById(doc.id);
+  await syncUsuario(user);
+  ok(res, user, 201);
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return fail(res, 400, 'Email y contraseña son obligatorios');
+
+  const user = await getUserByEmail(email);
+  if (!user || !user.password_hash) return fail(res, 401, 'Credenciales inválidas');
+
+  const valid = await bcrypt.compare(password, user.password_hash);
+  if (!valid) return fail(res, 401, 'Credenciales inválidas');
+
+  const { password_hash, ...safe } = user;
+  ok(res, safe);
 });
 
 // ── Usuarios (MongoDB) ────────────────────────────────────────────────────────
