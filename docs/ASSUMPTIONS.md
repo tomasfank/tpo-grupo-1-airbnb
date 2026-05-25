@@ -1,0 +1,14 @@
+# Supuestos del sistema
+- Un usuario puede ser huésped o anfitrión, pero no ambos simultáneamente.
+- Cada propiedad pertenece a un único anfitrión.
+- Las propiedades de un anfitrión no se almacenan en su perfil, sino que se obtienen mediante consultas por anfitrion _id.
+- Una reserva tiene exactamente un pago asociado.
+- El pago se almacena como un subdocumento dentro de la reserva.
+- Una reserva puede tener cero o una reseña asociada.
+- Cada reseña posee una única calificación que representa tanto a la propiedad como al anfitrión.
+- Solo un huésped que haya completado una reserva puede dejar una reseña.
+- Los promedios de calificación se almacenan precalculados en usuarios y propiedades.
+- Los campos de tipo enumerado se almacenan como strings simples.
+- Los servicios de una propiedad se almacenan como un array embebido dentro del documento de la propiedad.
+- Se permite la duplicación controlada de identificadores (huesped_id, anfitrion_id, propiedad_id) con el objetivo de optimizar consultas frecuentes.
+- La reseña del anfitrión hacia el huésped no está contemplada en el sistema — solo los huéspedes pueden reseñar.
