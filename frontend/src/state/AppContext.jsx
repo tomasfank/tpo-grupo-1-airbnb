@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { apiError, getData, postData } from '../api/client';
+import { apiError, getData, postData, putData } from '../api/client';
 
 const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
@@ -92,6 +92,19 @@ export function AppProvider({ children }) {
 
   const logout = () => { persistUser(null); notify('Sesión cerrada'); };
 
+  const updateProfile = async (patch) => {
+    try {
+      const updated = await putData(`/usuarios/${user.id}`, patch);
+      persistUser(updated);
+      notify('Perfil actualizado');
+      await load();
+      return updated;
+    } catch (e) {
+      notify(apiError(e), 'error');
+      throw e;
+    }
+  };
+
   const run = async (fn, success = 'Operación realizada') => {
     try { const result = await fn(); notify(success); await load(); return result; }
     catch(e) { notify(apiError(e), 'error'); throw e; }
@@ -99,7 +112,7 @@ export function AppProvider({ children }) {
 
   useEffect(() => { load(); }, [load]);
   const value = useMemo(
-    () => ({ user, usuarios, propiedades, reservas, dashboard, loading, toast, login, register, loginSimulado, logout, load, run, notify, clearToast }),
+    () => ({ user, usuarios, propiedades, reservas, dashboard, loading, toast, login, register, loginSimulado, logout, updateProfile, load, run, notify, clearToast }),
     [user, usuarios, propiedades, reservas, dashboard, loading, toast, load]
   );
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

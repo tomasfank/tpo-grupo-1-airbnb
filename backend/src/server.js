@@ -7,9 +7,9 @@ import { v4 as uuid } from 'uuid';
 import { ok, fail, nightsBetween } from './utils.js';
 import { pool, initPostgres, mapReserva, getReservaById } from './postgres.js';
 import {
-  initMongo, getUsuarios, getUserById, getUserByEmail, createUsuario, updateUsuario, deleteUsuario,
+  initMongo, getUsuarios, getUserById, getUserByEmail, createUsuario, updateUsuario, updatePassword, deleteUsuario,
   getPropiedades, getPropiedadById, createPropiedad, updatePropiedad,
-  recalcRatings, cacheResenia, getDashboardMongo,
+  getAnfitrionConPropiedades, recalcRatings, cacheResenia, getDashboardMongo,
 } from './mongo.js';
 import {
   initCassandra, createResenia, getReseniasByPropiedad,
@@ -145,10 +145,15 @@ app.post('/api/usuarios', async (req, res) => {
 });
 
 app.get('/api/usuarios/:id', async (req, res) => {
+  // Para anfitriones: resuelve perfil + propiedades activas en una sola query ($lookup).
+  // Para huéspedes/admins: devuelve el perfil sin propiedades.
   const user = await getUserById(req.params.id);
   if (!user) return fail(res, 404, 'Usuario no encontrado');
-  const propiedades = await getPropiedades({ anfitrion_id: user.id });
-  ok(res, { ...user, propiedades });
+  if (user.tipo === 'anfitrion') {
+    ok(res, await getAnfitrionConPropiedades(req.params.id));
+  } else {
+    ok(res, user);
+  }
 });
 
 app.put('/api/usuarios/:id', async (req, res) => {

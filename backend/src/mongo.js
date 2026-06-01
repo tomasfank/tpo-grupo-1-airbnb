@@ -26,7 +26,13 @@ export async function initMongo(retries = 20) {
       await _db.collection('propiedades').createIndex({ 'ubicacion.coords': '2dsphere' });
       // Índices únicos sobre el campo id (UUID string, no _id de Mongo)
       await _db.collection('usuarios').createIndex({ id: 1 }, { unique: true });
+      await _db.collection('usuarios').createIndex({ email: 1 }, { unique: true });
       await _db.collection('propiedades').createIndex({ id: 1 }, { unique: true });
+      await _db.collection('propiedades').createIndex({ anfitrion_id: 1 });
+      // Índices para recalcular promedios de rating eficientemente
+      await _db.collection('resenias_cache').createIndex({ propiedad_id: 1 });
+      await _db.collection('resenias_cache').createIndex({ anfitrion_id: 1 });
+      await _db.collection('resenias_cache').createIndex({ reserva_id: 1 });
 
       // Password hasheado para los usuarios de seed (permite login real con "demo1234")
       const defaultHash = await bcrypt.hash(SEED_DEFAULT_PASSWORD, 10);
@@ -88,6 +94,35 @@ export async function updateUsuario(id, patch) {
 
 export async function deleteUsuario(id) {
   await getDb().collection('usuarios').deleteOne({ id });
+}
+
+// Devuelve el perfil del anfitrión con sus propiedades activas embebidas.
+// Usa $lookup para resolver todo en una sola query en lugar de dos llamadas separadas.
+export async function getAnfitrionConPropiedades(id) {
+  const docs = await getDb().collection('usuarios').aggregate([
+    { $match: { id, tipo: 'anfitrion' } },
+    {
+      $lookup: {
+        from: 'propiedades',
+        let: { uid: '$id' },
+        pipeline: [
+          { $match: { $expr: { $and: [
+            { $eq: ['$anfitrion_id', '$$uid'] },
+            { $ne: ['$estado', 'eliminada'] },
+          ]}}},
+          { $project: { _id: 0 } },
+        ],
+        as: 'propiedades',
+      },
+    },
+    { $project: { _id: 0, password_hash: 0 } },
+  ]).toArray();
+  return docs[0] || null;
+}
+
+// Actualiza solo el password_hash. Separa la lógica de auth del update de perfil.
+export async function updatePassword(id, newHash) {
+  await getDb().collection('usuarios').updateOne({ id }, { $set: { password_hash: newHash } });
 }
 
 // ── Propiedades ───────────────────────────────────────────────────────────────

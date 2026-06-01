@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { LogIn, UserPlus, LogOut, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LogIn, UserPlus, LogOut, ShieldCheck, Pencil, X } from 'lucide-react';
 import { useApp } from '../state/AppContext';
 import { Field, Badge } from '../components/Common';
 
@@ -14,11 +14,17 @@ const SEED_EMAILS = [
 const INITIAL = { email: '', password: '', nombre: '', tipo: 'huesped', telefono: '', bio: '' };
 
 export default function Login() {
-  const { user, login, register, logout } = useApp();
+  const { user, login, register, logout, updateProfile } = useApp();
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState(INITIAL);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ nombre: '', telefono: '', bio: '' });
+
+  useEffect(() => {
+    if (user) setEditForm({ nombre: user.nombre || '', telefono: user.telefono || '', bio: user.bio || '' });
+  }, [user]);
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -42,27 +48,58 @@ export default function Login() {
     setError('');
   };
 
+  const saveProfile = async () => {
+    try {
+      await updateProfile(editForm);
+      setEditing(false);
+    } catch { /* error ya notificado por updateProfile */ }
+  };
+
   if (user) {
     return <div className="stack">
       <section className="panel" style={{maxWidth: 520, margin: '0 auto', width: '100%'}}>
-        <div style={{display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8}}>
-          <ShieldCheck size={22} color="var(--green)"/>
-          <h3 style={{margin: 0}}>Sesión activa</h3>
+        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8}}>
+          <div style={{display: 'flex', alignItems: 'center', gap: 10}}>
+            <ShieldCheck size={22} color="var(--green)"/>
+            <h3 style={{margin: 0}}>Mi cuenta</h3>
+          </div>
+          <button
+            className="ghost"
+            onClick={() => setEditing(e => !e)}
+            style={{display: 'inline-flex', alignItems: 'center', gap: 6}}
+          >
+            {editing ? <><X size={15}/> Cancelar</> : <><Pencil size={15}/> Editar perfil</>}
+          </button>
         </div>
-        <p className="muted small">Ya estás autenticado. Podés operar como {user.tipo} en toda la app.</p>
 
-        <div className="userPill" style={{marginTop: 16}}>
-          <div className="avatar">{user.nombre?.[0]?.toUpperCase() || '?'}</div>
-          <span>
-            <b>{user.nombre}</b>
-            <small>{user.tipo} · {user.email}</small>
-          </span>
-        </div>
-
-        <div style={{marginTop: 16, display: 'grid', gap: 8}}>
-          <Badge tone="green">ID: {user.id}</Badge>
-          {user.telefono && <Badge>Tel: {user.telefono}</Badge>}
-        </div>
+        {!editing ? <>
+          <div className="userPill" style={{marginTop: 8}}>
+            <div className="avatar">{user.nombre?.[0]?.toUpperCase() || '?'}</div>
+            <span>
+              <b>{user.nombre}</b>
+              <small>{user.tipo} · {user.email}</small>
+            </span>
+          </div>
+          <div style={{marginTop: 12, display: 'grid', gap: 6}}>
+            <Badge tone="green">ID: {user.id}</Badge>
+            {user.telefono && <Badge>Tel: {user.telefono}</Badge>}
+            {user.bio && <p className="muted small" style={{margin: 0}}>{user.bio}</p>}
+          </div>
+        </> : <>
+          <p className="muted small" style={{marginTop: 4}}>Podés actualizar tu nombre, teléfono y bio. El tipo de cuenta no se puede cambiar.</p>
+          <div style={{marginTop: 12, display: 'grid', gap: 10}}>
+            <Field label="Nombre">
+              <input value={editForm.nombre} onChange={e => setEditForm(f => ({...f, nombre: e.target.value}))} />
+            </Field>
+            <Field label="Teléfono">
+              <input value={editForm.telefono} onChange={e => setEditForm(f => ({...f, telefono: e.target.value}))} />
+            </Field>
+            <Field label="Bio">
+              <textarea value={editForm.bio} onChange={e => setEditForm(f => ({...f, bio: e.target.value}))} rows={3}/>
+            </Field>
+            <button onClick={saveProfile} disabled={!editForm.nombre}>Guardar cambios</button>
+          </div>
+        </>}
 
         <button className="danger" onClick={logout} style={{marginTop: 18, display: 'inline-flex', alignItems: 'center', gap: 8}}>
           <LogOut size={16}/> Cerrar sesión
