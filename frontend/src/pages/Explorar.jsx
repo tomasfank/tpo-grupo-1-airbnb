@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { MapPin, Star, Users, X } from 'lucide-react';
 import { getData, postData } from '../api/client';
 import { Badge, EmptyState, Field, Money } from '../components/Common';
@@ -9,6 +9,17 @@ export default function Explorar() {
   const [filters, setFilters] = useState({ ciudad: '', tipo: '', precioMax: '' });
   const [booking, setBooking] = useState({});
   const [perfilAnfitrion, setPerfilAnfitrion] = useState(null);
+  const [recomendada, setRecomendada] = useState(null);
+
+  useEffect(() => {
+    if (user?.tipo === 'huesped') {
+      getData(`/recomendaciones/${user.id}`)
+        .then(list => setRecomendada(list?.[0] || null))
+        .catch(() => setRecomendada(null));
+    } else {
+      setRecomendada(null);
+    }
+  }, [user]);
 
   const apply = () => load(Object.fromEntries(Object.entries(filters).filter(([, v]) => v)));
 
@@ -28,6 +39,12 @@ export default function Explorar() {
     const data = await getData(`/usuarios/${id}`);
     setPerfilAnfitrion(data);
   };
+
+  const grid = recomendada
+    ? [{ ...recomendada, _recomendada: true }, ...propiedades.filter(p => p.id !== recomendada.id)]
+    : propiedades;
+
+  const cardStyle = p => p._recomendada ? { border: '2px solid #e53935', borderRadius: 12 } : {};
 
   return <div className="stack">
 
@@ -86,8 +103,11 @@ export default function Explorar() {
 
     {/* ── Cards de propiedades ──────────────────────────────────────────── */}
     <section className="cardsGrid">
-      {propiedades.length ? propiedades.map(p => (
-        <article className="propertyCard" key={p.id}>
+      {grid.length ? grid.map(p => (
+        <article className="propertyCard" key={p.id} style={cardStyle(p)}>
+          {p._recomendada && (
+            <div style={{background:'#e53935',color:'#fff',fontWeight:700,fontSize:12,padding:'4px 12px',borderRadius:'10px 10px 0 0',letterSpacing:1}}>RECOMENDADA</div>
+          )}
           <img src={p.imagen} alt={p.titulo}/>
           <div className="propertyBody">
             <div className="propertyTitle"><h3>{p.titulo}</h3><Badge>{p.tipo}</Badge></div>
