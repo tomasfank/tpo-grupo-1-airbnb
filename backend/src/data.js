@@ -22,7 +22,7 @@ export const SEED_PROPIEDADES = [
   {
     id: SEED_IDS.prop1, anfitrion_id: SEED_IDS.host1,
     titulo: 'Depto luminoso en Palermo', tipo: 'departamento',
-    ubicacion: { ciudad: 'Buenos Aires', pais: 'Argentina', direccion: 'Av. Santa Fe 3200', coords: { type: 'Point', coordinates: [-58.421, -34.589] } },
+    ubicacion: { ciudad: 'Buenos Aires', pais: 'Argentina', direccion: 'Av. Santa Fe 3200', coords: { type: 'Point', coordinates: [-58.433124, -34.576124] } },
     precio_noche: 60000, descripcion: 'Cerca de bares, subte y zona gastronómica.',
     cantidad_huespedes: 3, servicios: ['wifi', 'aire acondicionado', 'cocina'],
     estado: 'activa', promedio_rating: 4.5,
@@ -31,7 +31,7 @@ export const SEED_PROPIEDADES = [
   {
     id: SEED_IDS.prop2, anfitrion_id: SEED_IDS.host1,
     titulo: 'Casa con patio en Córdoba', tipo: 'casa',
-    ubicacion: { ciudad: 'Córdoba', pais: 'Argentina', direccion: 'Belgrano 120', coords: { type: 'Point', coordinates: [-64.188, -31.42] } },
+    ubicacion: { ciudad: 'Córdoba', pais: 'Argentina', direccion: 'Belgrano 120', coords: { type: 'Point', coordinates: [-64.189015, -31.416902] } },
     precio_noche: 80000, descripcion: 'Ideal para familia, con patio y parrilla.',
     cantidad_huespedes: 5, servicios: ['wifi', 'estacionamiento', 'pileta', 'parrilla'],
     estado: 'activa', promedio_rating: 0,
@@ -40,7 +40,7 @@ export const SEED_PROPIEDADES = [
   {
     id: SEED_IDS.prop3, anfitrion_id: SEED_IDS.host2,
     titulo: 'Loft céntrico en Rosario', tipo: 'loft',
-    ubicacion: { ciudad: 'Rosario', pais: 'Argentina', direccion: 'Pellegrini 900', coords: { type: 'Point', coordinates: [-60.64, -32.95] } },
+    ubicacion: { ciudad: 'Rosario', pais: 'Argentina', direccion: 'Pellegrini 900', coords: { type: 'Point', coordinates: [-60.763571, -32.992347] } },
     precio_noche: 45000, descripcion: 'Funcional, moderno y cerca del río.',
     cantidad_huespedes: 2, servicios: ['wifi', 'calefacción'],
     estado: 'activa', promedio_rating: 0,
