@@ -58,28 +58,66 @@ docker compose up --build
 
 ## Endpoints principales
 
-| Método | Ruta | Base |
+### Autenticación y usuarios (MongoDB)
+
+| Método | Ruta | Descripción |
 |---|---|---|
-| GET/POST | `/api/usuarios` | MongoDB |
-| GET/PUT | `/api/usuarios/:id` | MongoDB |
-| GET/POST | `/api/propiedades` | MongoDB |
-| GET/PUT/DELETE | `/api/propiedades/:id` | MongoDB |
-| GET/POST | `/api/reservas` | PostgreSQL |
-| PATCH | `/api/reservas/:id/cancelar` | PostgreSQL |
-| PATCH | `/api/reservas/:id/finalizar` | PostgreSQL |
-| POST | `/api/resenias` | Cassandra |
-| GET | `/api/resenias` | Cassandra |
-| GET | `/api/resenias/anfitrion/:id` | Cassandra |
-| GET | `/api/recomendaciones/:id` | Neo4j + MongoDB |
+| POST | `/api/auth/register` | Registrar nuevo usuario (huésped o anfitrión). Hashea password con bcrypt. |
+| POST | `/api/auth/login` | Login con email + password. Devuelve perfil sin `password_hash`. |
+| GET | `/api/usuarios` | Listar usuarios. Acepta `?tipo=huesped\|anfitrion`. |
+| POST | `/api/usuarios` | Crear usuario (uso admin, acepta tipo `admin`). |
+| GET | `/api/usuarios/:id` | Perfil del usuario. Si es anfitrión, incluye array `propiedades` activas (resuelto con `$lookup` en una sola query). |
+| PUT | `/api/usuarios/:id` | Actualizar perfil (nombre, teléfono, bio). Bloquea cambios de `id` y `tipo`. |
+| DELETE | `/api/usuarios/:id` | Eliminar usuario. |
+
+### Propiedades (MongoDB)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/propiedades` | Listar propiedades. Acepta `?ciudad`, `?tipo`, `?precioMin`, `?precioMax`, `?lat&lng&radioKm`. |
+| POST | `/api/propiedades` | Publicar propiedad (requiere `anfitrion_id` válido). |
+| GET | `/api/propiedades/:id` | Detalle de propiedad con anfitrión y reseñas. |
+| PUT | `/api/propiedades/:id` | Actualizar propiedad. |
+| DELETE | `/api/propiedades/:id` | Soft-delete (cambia estado a `eliminada`). |
+
+### Reservas y pagos (PostgreSQL)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/reservas` | Listar reservas. Acepta `?huesped_id`, `?anfitrion_id`, `?estado`. |
+| POST | `/api/reservas` | Crear reserva con validación de disponibilidad (transacción ACID). |
+| PATCH | `/api/reservas/:id/cancelar` | Cancelar reserva. |
+| PATCH | `/api/reservas/:id/finalizar` | Finalizar reserva y marcar pago como completado. |
+
+### Reseñas (Cassandra) y recomendaciones (Neo4j)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| POST | `/api/resenias` | Crear reseña (solo sobre reservas completadas, una por reserva). |
+| GET | `/api/resenias` | Listar todas las reseñas. |
+| GET | `/api/resenias/anfitrion/:id` | Reseñas de un anfitrión. |
+| GET | `/api/recomendaciones/:id` | Propiedades recomendadas por collaborative filtering (Neo4j). |
 
 ---
 
 ## Qué permite hacer
 
-- Login simulado como huésped o anfitrión
-- CRUD completo de usuarios y propiedades
-- Búsqueda de propiedades por ciudad, tipo, precio y coordenadas geográficas
-- Crear reservas con validación de disponibilidad, fechas y capacidad
-- Pago embebido en la reserva; cancelar y finalizar
-- Reseñas solo sobre reservas completadas; recalcula rating de propiedad y anfitrión
-- **Recomendaciones colaborativas**: Neo4j sugiere propiedades basándose en el historial de reservas de usuarios similares
+### Gestión de usuarios
+- **Registrar** una cuenta nueva como huésped o anfitrión desde la pantalla de login (password hasheado con bcrypt, validación de email único)
+- **Iniciar sesión** con email + password real; la sesión persiste en `localStorage`
+- **Consultar el perfil** propio: nombre, tipo, email, teléfono, bio y rating acumulado
+- **Editar el perfil** propio: nombre, teléfono y bio desde la pantalla "Mi cuenta" (tipo de cuenta no modificable)
+- **Ver el perfil público de cualquier anfitrión** con todas sus propiedades activas desde Explorar → botón "Ver perfil" en cada card (usa `$lookup` en MongoDB, una sola query)
+
+### Gestión de propiedades
+- Publicar, editar y eliminar propiedades (soft-delete) como anfitrión
+- Buscar propiedades por ciudad, tipo, precio máximo/mínimo y coordenadas geográficas (radio en km)
+
+### Reservas y pagos
+- Crear reservas con validación de disponibilidad de fechas (transacción ACID en PostgreSQL)
+- Controlar capacidad máxima de huéspedes por propiedad
+- Cancelar y finalizar reservas; pago actualizado automáticamente al finalizar
+
+### Reseñas y recomendaciones
+- Dejar reseñas solo sobre reservas completadas (una por reserva); recalcula `promedio_rating` de propiedad y anfitrión en MongoDB
+- **Recomendaciones colaborativas**: Neo4j sugiere propiedades basándose en el historial de reservas de usuarios similares; cae a las mejor calificadas si no hay historial
