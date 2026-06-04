@@ -93,6 +93,12 @@ export default function Explorar() {
         {geo ? <><X size={16}/> Quitar ubicación</> : <><Locate size={16}/> {geoLoading ? 'Detectando...' : 'Buscar cerca de mí'}</>}
       </button>
       {geo && (
+        <Badge tone="blue">
+          <MapPin size={12} style={{marginRight:4}}/>
+          {geo.lat.toFixed(5)}, {geo.lng.toFixed(5)}
+        </Badge>
+      )}
+      {geo && (
         <div style={{display:'flex', alignItems:'center', gap:10, flex:1, minWidth:240}}>
           <span className="small muted">Radio:</span>
           <input
