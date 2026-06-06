@@ -111,8 +111,12 @@ export async function getRecomendaciones(usuario_id) {
   }
 }
 
-// Seed inicial del grafo con los datos fijos de usuarios y propiedades
-export async function seedNeo4j(usuarios, propiedades) {
+// Seed inicial del grafo: usuarios, propiedades, reservas y reseñas.
+// Relaciones creadas:
+//   (Usuario)-[:ANFITRIO]->(Propiedad)   — anfitrión publica una propiedad
+//   (Usuario)-[:RESERVO]->(Propiedad)    — huésped reservó una propiedad
+//   (Usuario)-[:RESENO {calificacion}]->(Propiedad) — huésped dejó reseña
+export async function seedNeo4j(usuarios, propiedades, reservas = [], resenias = []) {
   const session = driver.session();
   try {
     for (const u of usuarios) {
@@ -130,6 +134,24 @@ export async function seedNeo4j(usuarios, propiedades) {
         { id: p.id, titulo: p.titulo, ciudad: p.ubicacion.ciudad, tipo: p.tipo, anfitrion_id: p.anfitrion_id }
       );
     }
+    for (const r of reservas) {
+      await session.run(
+        `MERGE (u:Usuario {id: $huesped_id})
+         MERGE (p:Propiedad {id: $propiedad_id})
+         MERGE (u)-[:RESERVO]->(p)`,
+        { huesped_id: r.huesped_id, propiedad_id: r.propiedad_id }
+      );
+    }
+    for (const r of resenias) {
+      await session.run(
+        `MERGE (u:Usuario {id: $huesped_id})
+         MERGE (p:Propiedad {id: $propiedad_id})
+         MERGE (u)-[rel:RESENO]->(p)
+         SET rel.calificacion = $calificacion`,
+        { huesped_id: r.huesped_id, propiedad_id: r.propiedad_id, calificacion: r.calificacion }
+      );
+    }
+    console.log(`Neo4j seed: ${usuarios.length} usuarios, ${propiedades.length} propiedades, ${reservas.length} RESERVO, ${resenias.length} RESENO`);
   } finally {
     await session.close();
   }

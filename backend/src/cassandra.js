@@ -79,6 +79,34 @@ export async function initCassandra(retries = 30) {
   }
 }
 
+export async function seedCassandra(resenias) {
+  for (const doc of resenias) {
+    const ts = new Date(doc.created_at);
+    const batch = [
+      {
+        query: `INSERT INTO resenias_by_propiedad
+                (propiedad_id, created_at, id, reserva_id, huesped_id, anfitrion_id, calificacion, comentario)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [doc.propiedad_id, ts, doc.id, doc.reserva_id, doc.huesped_id, doc.anfitrion_id, doc.calificacion, doc.comentario],
+      },
+      {
+        query: `INSERT INTO resenias_by_anfitrion
+                (anfitrion_id, created_at, id, reserva_id, propiedad_id, huesped_id, calificacion, comentario)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [doc.anfitrion_id, ts, doc.id, doc.reserva_id, doc.propiedad_id, doc.huesped_id, doc.calificacion, doc.comentario],
+      },
+      {
+        query: `INSERT INTO resenias_by_reserva
+                (reserva_id, id, propiedad_id, anfitrion_id, huesped_id, calificacion, comentario, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [doc.reserva_id, doc.id, doc.propiedad_id, doc.anfitrion_id, doc.huesped_id, doc.calificacion, doc.comentario, ts],
+      },
+    ];
+    await client.batch(batch, { prepare: true });
+  }
+  console.log(`Cassandra seed: ${resenias.length} reseñas cargadas`);
+}
+
 export async function createResenia(doc) {
   const ts = new Date(doc.created_at);
 

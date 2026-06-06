@@ -213,6 +213,23 @@ export function cacheResenia(doc) {
   });
 }
 
+export async function seedReseniaCache(resenias) {
+  for (const r of resenias) {
+    await getDb().collection('resenias_cache').updateOne(
+      { id: r.id },
+      { $setOnInsert: { id: r.id, reserva_id: r.reserva_id, propiedad_id: r.propiedad_id, anfitrion_id: r.anfitrion_id, huesped_id: r.huesped_id, calificacion: r.calificacion } },
+      { upsert: true }
+    );
+  }
+  // Recalcular ratings de cada par (propiedad, anfitrion) afectado
+  const pairs = [...new Set(resenias.map(r => `${r.propiedad_id}|${r.anfitrion_id}`))];
+  for (const pair of pairs) {
+    const [propiedad_id, anfitrion_id] = pair.split('|');
+    await recalcRatings(propiedad_id, anfitrion_id);
+  }
+  console.log(`MongoDB seed: cache de ${resenias.length} reseñas y ratings recalculados`);
+}
+
 export function existeReseniaCacheParaReserva(reserva_id) {
   return getDb().collection('resenias_cache').findOne({ reserva_id });
 }

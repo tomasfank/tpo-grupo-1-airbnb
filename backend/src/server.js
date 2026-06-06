@@ -5,21 +5,21 @@ import bcrypt  from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 
 import { ok, fail, nightsBetween } from './utils.js';
-import { pool, initPostgres, mapReserva, getReservaById } from './postgres.js';
+import { pool, initPostgres, mapReserva, getReservaById, seedPostgres } from './postgres.js';
 import {
   initMongo, getUsuarios, getUserById, getUserByEmail, createUsuario, updateUsuario, updatePassword, deleteUsuario,
   getPropiedades, getPropiedadById, createPropiedad, updatePropiedad,
-  getAnfitrionConPropiedades, recalcRatings, cacheResenia, getDashboardMongo,
+  getAnfitrionConPropiedades, recalcRatings, cacheResenia, getDashboardMongo, seedReseniaCache,
 } from './mongo.js';
 import {
-  initCassandra, createResenia, getReseniasByPropiedad,
+  initCassandra, seedCassandra, createResenia, getReseniasByPropiedad,
   getReseniasByAnfitrion, getResenias, existeReseniaParaReserva,
 } from './cassandra.js';
 import {
   initNeo4j, syncUsuario, syncPropiedad, syncReserva,
   getRecomendaciones, seedNeo4j,
 } from './neo4j.js';
-import { SEED_USUARIOS, SEED_PROPIEDADES } from './data.js';
+import { SEED_USUARIOS, SEED_PROPIEDADES, SEED_RESERVAS, SEED_RESENIAS } from './data.js';
 
 const app  = express();
 app.use(cors());
@@ -32,7 +32,10 @@ await initPostgres();
 await initMongo();
 await initCassandra();
 await initNeo4j();
-await seedNeo4j(SEED_USUARIOS, SEED_PROPIEDADES);
+await seedPostgres(SEED_RESERVAS);
+await seedCassandra(SEED_RESENIAS);
+await seedReseniaCache(SEED_RESENIAS);
+await seedNeo4j(SEED_USUARIOS, SEED_PROPIEDADES, SEED_RESERVAS, SEED_RESENIAS);
 
 // ── Helpers locales ───────────────────────────────────────────────────────────
 

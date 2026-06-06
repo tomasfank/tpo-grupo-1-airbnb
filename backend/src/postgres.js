@@ -65,6 +65,23 @@ export function mapReserva(row) {
   };
 }
 
+export async function seedPostgres(reservas) {
+  for (const r of reservas) {
+    await pool.query(`
+      INSERT INTO reservas (id, huesped_id, anfitrion_id, propiedad_id, fecha_inicio, fecha_fin, cantidad_huespedes, estado, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      ON CONFLICT (id) DO NOTHING
+    `, [r.id, r.huesped_id, r.anfitrion_id, r.propiedad_id, r.fecha_inicio, r.fecha_fin, r.cantidad_huespedes, r.estado, r.created_at]);
+
+    await pool.query(`
+      INSERT INTO pagos (id, reserva_id, monto, metodo, estado)
+      VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT (id) DO NOTHING
+    `, [r.pago.id, r.id, r.pago.monto, r.pago.metodo, r.pago.estado]);
+  }
+  console.log(`PostgreSQL seed: ${reservas.length} reservas y pagos cargados`);
+}
+
 export async function getReservaById(id, client = pool) {
   const { rows } = await client.query(`
     SELECT r.*, p.id AS pago_id, p.monto, p.metodo, p.estado AS pago_estado
