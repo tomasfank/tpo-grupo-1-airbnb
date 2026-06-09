@@ -18,6 +18,7 @@ export function AppProvider({ children }) {
   const [reservas, setReservas] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
   const [toast, setToast] = useState(null);
 
   const notify = (message, type = 'success') => setToast({ message, type });
@@ -49,6 +50,7 @@ export function AppProvider({ children }) {
       notify(apiError(e), 'error');
     } finally {
       setLoading(false);
+      setInitialized(true);
     }
   }, []);
 
@@ -112,8 +114,8 @@ export function AppProvider({ children }) {
 
   useEffect(() => { load(); }, [load]);
   const value = useMemo(
-    () => ({ user, usuarios, propiedades, reservas, dashboard, loading, toast, login, register, loginSimulado, logout, updateProfile, load, run, notify, clearToast }),
-    [user, usuarios, propiedades, reservas, dashboard, loading, toast, load]
+    () => ({ user, usuarios, propiedades, reservas, dashboard, loading, initialized, toast, login, register, loginSimulado, logout, updateProfile, load, run, notify, clearToast }),
+    [user, usuarios, propiedades, reservas, dashboard, loading, initialized, toast, load]
   );
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

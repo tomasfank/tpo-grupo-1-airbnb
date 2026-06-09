@@ -21,7 +21,7 @@ const canAccess = (page, user) => {
 
 function App() {
   const [page, setPage] = useState('dashboard');
-  const { loading, user, clearToast } = useApp();
+  const { loading, initialized, user, clearToast } = useApp();
 
   useEffect(() => {
     if (!canAccess(page, user)) setPage('dashboard');
@@ -31,7 +31,7 @@ function App() {
   const safePage = canAccess(page, user) ? page : 'dashboard';
 
   const pages = { dashboard:<Dashboard setPage={setPageSafe}/>, explorar:<Explorar/>, reservas:<Reservas/>, anfitrion:<Anfitrion/>, usuarios:<Usuarios/>, resenias:<Resenias/>, login:<Login/> };
-  return <Layout page={safePage} setPage={setPageSafe}>{loading ? <div className="loading">Cargando datos...</div> : pages[safePage]}</Layout>;
+  return <Layout page={safePage} setPage={setPageSafe}>{!initialized ? <div className="loading">Cargando datos...</div> : pages[safePage]}</Layout>;
 }
 
 createRoot(document.getElementById('root')).render(<AppProvider><App/></AppProvider>);
