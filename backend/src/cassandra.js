@@ -24,8 +24,10 @@ export async function initCassandra(retries = 30) {
       client = new cassandra.Client({ contactPoints, localDataCenter, keyspace: 'airbnb_tpo' });
       await client.connect();
 
-      // Patrón Cassandra: una tabla por query
-      // Tabla 1: consultar reseñas por propiedad (caso de uso: ver reseñas de un alojamiento)
+      
+
+
+      // Tabla 1: resenias_by_propiedad (consultar reseñas de un alojamiento)
       await client.execute(`
         CREATE TABLE IF NOT EXISTS resenias_by_propiedad (
           propiedad_id  TEXT,
@@ -40,7 +42,7 @@ export async function initCassandra(retries = 30) {
         ) WITH CLUSTERING ORDER BY (created_at DESC, id ASC)
       `);
 
-      // Tabla 2: consultar reseñas por anfitrión (caso de uso: ver historial de un anfitrión)
+      // Tabla 2: resenias_by_anfitrion (consultar historial de un anfitrión)
       await client.execute(`
         CREATE TABLE IF NOT EXISTS resenias_by_anfitrion (
           anfitrion_id  TEXT,
@@ -55,7 +57,7 @@ export async function initCassandra(retries = 30) {
         ) WITH CLUSTERING ORDER BY (created_at DESC, id ASC)
       `);
 
-      // Tabla 3: lookup por reserva_id (para verificar duplicados)
+      // Tabla 3: resenias_by_reserva (verificar duplicados)
       await client.execute(`
         CREATE TABLE IF NOT EXISTS resenias_by_reserva (
           reserva_id  TEXT PRIMARY KEY,
@@ -79,6 +81,7 @@ export async function initCassandra(retries = 30) {
   }
 }
 
+// Seed inicial
 export async function seedCassandra(resenias) {
   for (const doc of resenias) {
     const ts = new Date(doc.created_at);
@@ -110,7 +113,7 @@ export async function seedCassandra(resenias) {
 export async function createResenia(doc) {
   const ts = new Date(doc.created_at);
 
-  // LOGGED BATCH: las dos inserciones son atómicas (misma partición no requerida, pero garantiza consistencia)
+
   const batch = [
     {
       query: `INSERT INTO resenias_by_propiedad
@@ -162,8 +165,36 @@ export async function existeReseniaParaReserva(reserva_id) {
   return result.rows.length > 0;
 }
 
+// Elimina todas las reseñas de una propiedad
+export async function deleteReseniasByPropiedad(propiedad_id) {
+  const reviews = await getReseniasByPropiedad(propiedad_id);
+  if (!reviews.length) return;
+  const ops = [
+    { query: 'DELETE FROM resenias_by_propiedad WHERE propiedad_id = ?', params: [propiedad_id] },
+  ];
+  for (const r of reviews) {
+    ops.push({ query: 'DELETE FROM resenias_by_anfitrion WHERE anfitrion_id = ? AND created_at = ? AND id = ?', params: [r.anfitrion_id, new Date(r.created_at), r.id] });
+    ops.push({ query: 'DELETE FROM resenias_by_reserva WHERE reserva_id = ?', params: [r.reserva_id] });
+  }
+  await client.batch(ops, { prepare: true });
+}
+
+// Elimina reseñas de un huesped particular
+export async function deleteReseniasByReservaIds(reserva_ids) {
+  if (!reserva_ids.length) return;
+  const ops = [];
+  for (const reserva_id of reserva_ids) {
+    const result = await client.execute('SELECT * FROM resenias_by_reserva WHERE reserva_id = ?', [reserva_id], { prepare: true });
+    if (!result.rows.length) continue;
+    const r = result.rows[0];
+    ops.push({ query: 'DELETE FROM resenias_by_propiedad WHERE propiedad_id = ? AND created_at = ? AND id = ?', params: [r.propiedad_id, r.created_at, r.id] });
+    ops.push({ query: 'DELETE FROM resenias_by_anfitrion WHERE anfitrion_id = ? AND created_at = ? AND id = ?', params: [r.anfitrion_id, r.created_at, r.id] });
+    ops.push({ query: 'DELETE FROM resenias_by_reserva WHERE reserva_id = ?', params: [reserva_id] });
+  }
+  if (ops.length) await client.batch(ops, { prepare: true });
+}
+
 // Para GET /api/resenias (listado general, sin filtro de partición)
-// Nota: ALLOW FILTERING es aceptable en desarrollo/TPO; en producción se usaría una tabla adicional
 export async function getResenias() {
   const result = await client.execute('SELECT * FROM resenias_by_reserva');
   return result.rows.map(rowToResenia);

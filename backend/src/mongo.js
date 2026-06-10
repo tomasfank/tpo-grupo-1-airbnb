@@ -29,12 +29,12 @@ export async function initMongo(retries = 20) {
       await _db.collection('usuarios').createIndex({ email: 1 }, { unique: true });
       await _db.collection('propiedades').createIndex({ id: 1 }, { unique: true });
       await _db.collection('propiedades').createIndex({ anfitrion_id: 1 });
-      // Índices para recalcular promedios de rating eficientemente
+      // Índices para recalcular promedios de rating 
       await _db.collection('resenias_cache').createIndex({ propiedad_id: 1 });
       await _db.collection('resenias_cache').createIndex({ anfitrion_id: 1 });
       await _db.collection('resenias_cache').createIndex({ reserva_id: 1 });
 
-      // Password hasheado para los usuarios de seed (permite login real con "demo1234")
+      // Password hasheado para los usuarios de seed 
       const defaultHash = await bcrypt.hash(SEED_DEFAULT_PASSWORD, 10);
 
       // Seed: insertar solo si no existen (upsert por id)
@@ -44,7 +44,6 @@ export async function initMongo(retries = 20) {
           { $setOnInsert: { ...u, password_hash: defaultHash } },
           { upsert: true }
         );
-        // Si el seed ya existía sin password_hash (carga previa), agregarlo
         await _db.collection('usuarios').updateOne(
           { id: u.id, password_hash: { $exists: false } },
           { $set: { password_hash: defaultHash } }
@@ -64,7 +63,7 @@ export async function initMongo(retries = 20) {
   }
 }
 
-// ── Usuarios ──────────────────────────────────────────────────────────────────
+// Usuarios
 
 export function getUsuarios(filtro = {}) {
   return getDb().collection('usuarios').find(filtro, { projection: PUBLIC_USER_PROJECTION }).toArray();
@@ -74,7 +73,7 @@ export function getUserById(id) {
   return getDb().collection('usuarios').findOne({ id }, { projection: PUBLIC_USER_PROJECTION });
 }
 
-// Devuelve el doc completo INCLUYENDO password_hash. Sólo usar en flows de auth.
+// Devuelve el doc completo INCLUYENDO password_hash
 export function getUserByEmail(email) {
   return getDb().collection('usuarios').findOne({ email }, { projection: { _id: 0 } });
 }
@@ -94,6 +93,24 @@ export async function updateUsuario(id, patch) {
 
 export async function deleteUsuario(id) {
   await getDb().collection('usuarios').deleteOne({ id });
+}
+
+export async function getPropiedadesIdsByAnfitrion(anfitrion_id) {
+  const props = await getDb().collection('propiedades')
+    .find({ anfitrion_id }, { projection: { id: 1, _id: 0 } }).toArray();
+  return props.map(p => p.id);
+}
+
+export async function softDeletePropiedadesByAnfitrion(anfitrion_id) {
+  await getDb().collection('propiedades').updateMany({ anfitrion_id }, { $set: { estado: 'eliminada' } });
+}
+
+export async function deleteReseniasCacheByPropiedad(propiedad_id) {
+  await getDb().collection('resenias_cache').deleteMany({ propiedad_id });
+}
+
+export async function deleteReseniasCacheByUser(id) {
+  await getDb().collection('resenias_cache').deleteMany({ $or: [{ huesped_id: id }, { anfitrion_id: id }] });
 }
 
 // Devuelve el perfil del anfitrión con sus propiedades activas embebidas.
@@ -120,12 +137,12 @@ export async function getAnfitrionConPropiedades(id) {
   return docs[0] || null;
 }
 
-// Actualiza solo el password_hash. Separa la lógica de auth del update de perfil.
+// Actualiza solo el password_hash. 
 export async function updatePassword(id, newHash) {
   await getDb().collection('usuarios').updateOne({ id }, { $set: { password_hash: newHash } });
 }
 
-// ── Propiedades ───────────────────────────────────────────────────────────────
+// Propiedades
 
 export async function getPropiedades({ ciudad, tipo, precioMin, precioMax, anfitrion_id, lat, lng, radioKm } = {}) {
   const col = getDb().collection('propiedades');
@@ -182,7 +199,7 @@ export async function updatePropiedad(id, patch) {
   );
 }
 
-// ── Ratings ───────────────────────────────────────────────────────────────────
+// Ratings
 
 export async function recalcRatings(propiedad_id, anfitrion_id) {
   const col = getDb().collection('resenias_cache');
@@ -234,7 +251,7 @@ export function existeReseniaCacheParaReserva(reserva_id) {
   return getDb().collection('resenias_cache').findOne({ reserva_id });
 }
 
-// ── Dashboard ─────────────────────────────────────────────────────────────────
+// Dashboard
 
 export async function getDashboardMongo() {
   const [totalUsuarios, anfitriones, huespedes, totalProps] = await Promise.all([

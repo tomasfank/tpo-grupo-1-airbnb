@@ -5,19 +5,22 @@ import bcrypt  from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 
 import { ok, fail, nightsBetween } from './utils.js';
-import { pool, initPostgres, mapReserva, getReservaById, seedPostgres } from './postgres.js';
+import { pool, initPostgres, mapReserva, getReservaById, seedPostgres, getReservaIdsByUsuario, deleteReservasByUsuario, deleteReservasByPropiedad } from './postgres.js';
 import {
   initMongo, getUsuarios, getUserById, getUserByEmail, createUsuario, updateUsuario, updatePassword, deleteUsuario,
   getPropiedades, getPropiedadById, createPropiedad, updatePropiedad,
   getAnfitrionConPropiedades, recalcRatings, cacheResenia, getDashboardMongo, seedReseniaCache,
+  getPropiedadesIdsByAnfitrion, softDeletePropiedadesByAnfitrion,
+  deleteReseniasCacheByPropiedad, deleteReseniasCacheByUser,
 } from './mongo.js';
 import {
   initCassandra, seedCassandra, createResenia, getReseniasByPropiedad,
   getReseniasByAnfitrion, getResenias, existeReseniaParaReserva,
+  deleteReseniasByPropiedad, deleteReseniasByReservaIds,
 } from './cassandra.js';
 import {
   initNeo4j, syncUsuario, syncPropiedad, syncReserva,
-  getRecomendaciones, seedNeo4j,
+  getRecomendaciones, seedNeo4j, deleteUsuarioNode, deletePropiedadNode,
 } from './neo4j.js';
 import { SEED_USUARIOS, SEED_PROPIEDADES, SEED_RESERVAS, SEED_RESENIAS } from './data.js';
 
@@ -27,7 +30,7 @@ app.use(express.json());
 app.use(morgan('dev'));
 const PORT = process.env.PORT || 3000;
 
-// ── Inicialización de todas las bases ────────────────────────────────────────
+// Inicialización de bases 
 await initPostgres();
 await initMongo();
 await initCassandra();
@@ -37,7 +40,7 @@ await seedCassandra(SEED_RESENIAS);
 await seedReseniaCache(SEED_RESENIAS);
 await seedNeo4j(SEED_USUARIOS, SEED_PROPIEDADES, SEED_RESERVAS, SEED_RESENIAS);
 
-// ── Helpers locales ───────────────────────────────────────────────────────────
+// Helpers 
 
 async function hydrateReserva(reserva) {
   const [huesped, anfitrion, propiedad] = await Promise.all([
@@ -51,7 +54,7 @@ async function hydrateReserva(reserva) {
   return { ...reserva, huesped, anfitrion, propiedad, resenia };
 }
 
-// ── Health / Dashboard ────────────────────────────────────────────────────────
+//  Dashboard 
 
 app.get('/api/health', (_, res) =>
   ok(res, { status: 'running', mode: 'multi-db', databases: ['mongodb', 'postgres', 'cassandra', 'neo4j'] })
@@ -74,7 +77,7 @@ app.get('/api/dashboard', async (_, res) => {
   });
 });
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// Auth 
 
 app.post('/api/auth/login-simulado', async (req, res) => {
   const user = await getUserById(req.body.usuario_id);
@@ -122,7 +125,7 @@ app.post('/api/auth/login', async (req, res) => {
   ok(res, safe);
 });
 
-// ── Usuarios (MongoDB) ────────────────────────────────────────────────────────
+//Usuarios (MongoDB)
 
 app.get('/api/usuarios', async (req, res) => {
   const filtro = req.query.tipo ? { tipo: req.query.tipo } : {};
@@ -148,8 +151,8 @@ app.post('/api/usuarios', async (req, res) => {
 });
 
 app.get('/api/usuarios/:id', async (req, res) => {
-  // Para anfitriones: resuelve perfil + propiedades activas en una sola query ($lookup).
-  // Para huéspedes/admins: devuelve el perfil sin propiedades.
+  // Para anfitriones: perfil + propiedades ($lookup).
+  // Para huespedes/admins: perfil sin propiedades.
   const user = await getUserById(req.params.id);
   if (!user) return fail(res, 404, 'Usuario no encontrado');
   if (user.tipo === 'anfitrion') {
@@ -169,14 +172,37 @@ app.put('/api/usuarios/:id', async (req, res) => {
   ok(res, updated);
 });
 
+// Deletes + cascade para no dejar huerfanos
 app.delete('/api/usuarios/:id', async (req, res) => {
-  const exists = await getUserById(req.params.id);
-  if (!exists) return fail(res, 404, 'Usuario no encontrado');
-  await deleteUsuario(req.params.id);
-  ok(res, { id: req.params.id });
+  const { id } = req.params;
+  const usuario = await getUserById(id);
+  if (!usuario) return fail(res, 404, 'Usuario no encontrado');
+
+  if (usuario.tipo === 'anfitrion') {
+    // Cascade por cada propiedad del anfitrion
+    const propIds = await getPropiedadesIdsByAnfitrion(id);
+    for (const propId of propIds) {
+      await deleteReseniasByPropiedad(propId);      // Cassandra
+      await deleteReservasByPropiedad(propId);      // PostgreSQL
+      await deletePropiedadNode(propId);            // Neo4j
+      await deleteReseniasCacheByPropiedad(propId); // MongoDB cache
+    }
+    await softDeletePropiedadesByAnfitrion(id);     // MongoDB
+  } else {
+    // Huesped: limpiar sus reservas y reseñas
+    const reservaIds = await getReservaIdsByUsuario(id);
+    await deleteReseniasByReservaIds(reservaIds);   // Cassandra: 3 tablas
+    await deleteReservasByUsuario(id);              // PostgreSQL + pagos cascade
+  }
+
+  await deleteUsuarioNode(id);          // Neo4j
+  await deleteReseniasCacheByUser(id);  // MongoDB
+  await deleteUsuario(id);             // MongoDB
+
+  ok(res, { id });
 });
 
-// ── Propiedades (MongoDB) ─────────────────────────────────────────────────────
+// Propiedades (MongoDB)
 
 app.get('/api/propiedades', async (req, res) => {
   const { ciudad, tipo, precioMax, precioMin, anfitrion_id, lat, lng, radioKm } = req.query;
@@ -230,9 +256,17 @@ app.put('/api/propiedades/:id', async (req, res) => {
 });
 
 app.delete('/api/propiedades/:id', async (req, res) => {
-  const exists = await getPropiedadById(req.params.id);
+  const { id } = req.params;
+  const exists = await getPropiedadById(id);
   if (!exists) return fail(res, 404, 'Propiedad no encontrada');
-  const updated = await updatePropiedad(req.params.id, { estado: 'eliminada' });
+
+  // Cascade delete
+  await deleteReseniasByPropiedad(id);      // Cassandra: 3 tablas
+  await deleteReservasByPropiedad(id);      // PostgreSQL + pagos cascade
+  await deletePropiedadNode(id);            // Neo4j: nodo + relaciones
+  await deleteReseniasCacheByPropiedad(id); // MongoDB: resenias_cache
+  const updated = await updatePropiedad(id, { estado: 'eliminada' }); // MongoDB: soft delete
+
   ok(res, updated);
 });
 
@@ -240,7 +274,7 @@ app.get('/api/propiedades/:id/resenias', async (req, res) =>
   ok(res, await getReseniasByPropiedad(req.params.id))
 );
 
-// ── Reservas (PostgreSQL) ─────────────────────────────────────────────────────
+// Reservas (PostgreSQL)
 
 app.get('/api/reservas', async (req, res) => {
   const { huesped_id, anfitrion_id, propiedad_id, estado } = req.query;
@@ -369,7 +403,7 @@ app.patch('/api/reservas/:id/pago', async (req, res) => {
   ok(res, await hydrateReserva(await getReservaById(req.params.id)));
 });
 
-// ── Reseñas (Cassandra) ───────────────────────────────────────────────────────
+//Reseñas (Cassandra) 
 
 app.post('/api/resenias', async (req, res) => {
   const { reserva_id, calificacion, comentario } = req.body;
@@ -404,7 +438,7 @@ app.get('/api/resenias/anfitrion/:id', async (req, res) =>
   ok(res, await getReseniasByAnfitrion(req.params.id))
 );
 
-// ── Recomendaciones (Neo4j) ───────────────────────────────────────────────────
+//Recomendaciones (Neo4j)
 
 app.get('/api/recomendaciones/:id', async (req, res) => {
   const usuario_id = req.params.id;
@@ -420,8 +454,8 @@ app.get('/api/recomendaciones/:id', async (req, res) => {
 
   let propIds = await getRecomendaciones(usuario_id);
 
-  // Fallback: si no hay historial colaborativo, recomendar las mejor calificadas
-  // excluyendo propiedades que el usuario ya reservó
+  // Fallback: si no hay historial, recomendar las mejor calificadas
+  // excluyendo propiedades que el usuario ya reservo
   if (!propIds.length) {
     const todas = await getPropiedades({});
     propIds = todas
@@ -443,6 +477,6 @@ app.get('/api/recomendaciones/:id', async (req, res) => {
   ok(res, propiedades.filter(Boolean));
 });
 
-// ── 404 ───────────────────────────────────────────────────────────────────────
+//404
 app.use((_, res) => fail(res, 404, 'Endpoint no encontrado'));
 app.listen(PORT, () => console.log(`Airbnb TPO API running on port ${PORT}`));

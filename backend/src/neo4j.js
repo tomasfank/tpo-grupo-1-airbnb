@@ -87,10 +87,9 @@ export async function syncReserva(reserva) {
 /**
  * Recomendaciones colaborativas para un usuario.
  *
- * Lógica: "Huéspedes que reservaron las mismas propiedades que tú también reservaron X"
- * Si el usuario no tiene historial, devuelve los IDs de todas las propiedades
- * (el caller enriquece y ordena por promedio_rating).
- *
+ * Si usuario A reservo X e Y, y usuario B reservo Y y Z, entonces a A se le recomienda Z.
+ * Si el usuario no tiene historial, devuelve los IDs de todas las propiedades y recomienda la de mayor rating
+
  * @returns {string[]} lista de propiedad_id ordenados por relevancia descendente
  */
 export async function getRecomendaciones(usuario_id) {
@@ -109,6 +108,18 @@ export async function getRecomendaciones(usuario_id) {
   } finally {
     await session.close();
   }
+}
+
+export async function deleteUsuarioNode(id) {
+  const session = driver.session();
+  try { await session.run('MATCH (u:Usuario {id: $id}) DETACH DELETE u', { id }); }
+  finally { await session.close(); }
+}
+
+export async function deletePropiedadNode(id) {
+  const session = driver.session();
+  try { await session.run('MATCH (p:Propiedad {id: $id}) DETACH DELETE p', { id }); }
+  finally { await session.close(); }
 }
 
 // Seed inicial del grafo: usuarios, propiedades, reservas y reseñas.

@@ -82,6 +82,19 @@ export async function seedPostgres(reservas) {
   console.log(`PostgreSQL seed: ${reservas.length} reservas y pagos cargados`);
 }
 
+export async function getReservaIdsByUsuario(id) {
+  const { rows } = await pool.query('SELECT id FROM reservas WHERE huesped_id = $1 OR anfitrion_id = $1', [id]);
+  return rows.map(r => r.id);
+}
+
+export async function deleteReservasByUsuario(id) {
+  await pool.query('DELETE FROM reservas WHERE huesped_id = $1 OR anfitrion_id = $1', [id]);
+}
+
+export async function deleteReservasByPropiedad(propiedad_id) {
+  await pool.query('DELETE FROM reservas WHERE propiedad_id = $1', [propiedad_id]);
+}
+
 export async function getReservaById(id, client = pool) {
   const { rows } = await client.query(`
     SELECT r.*, p.id AS pago_id, p.monto, p.metodo, p.estado AS pago_estado
