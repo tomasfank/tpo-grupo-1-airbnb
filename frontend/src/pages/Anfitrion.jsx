@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { MapPin, Search } from 'lucide-react';
+import { MapPin, Search, X } from 'lucide-react';
 import { deleteData, postData, putData } from '../api/client';
 import { Field, Money, Badge, EmptyState } from '../components/Common';
 import { useApp } from '../state/AppContext';
@@ -26,13 +26,57 @@ export default function Anfitrion() {
   const { user, propiedades, reservas, run, notify } = useApp();
   const [form, setForm] = useState(initial);
   const [geocoding, setGeocoding] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState({});
   const mine = useMemo(() => propiedades.filter(p => p.anfitrion_id === user?.id), [propiedades, user?.id]);
   const received = useMemo(() => reservas.filter(r => r.anfitrion_id === user?.id), [reservas, user?.id]);
 
   if (user?.tipo !== 'anfitrion') return <section className="stack"><EmptyState title="Acceso restringido" text="Solo los anfitriones pueden acceder a esta sección."/></section>;
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const setEditField = (k, v) => setEditForm(f => ({ ...f, [k]: v }));
   const fillUbicacion = u => setForm(f => ({ ...f, ciudad: u.ciudad, direccion: u.direccion, lat: u.lat, lng: u.lng }));
+
+  const startEdit = (p) => {
+    setEditing(p);
+    setEditForm({
+      titulo: p.titulo,
+      tipo: p.tipo,
+      ciudad: p.ubicacion.ciudad,
+      pais: p.ubicacion.pais || 'Argentina',
+      direccion: p.ubicacion.direccion || '',
+      lat: p.ubicacion.coords?.coordinates?.[1] ?? -34.6,
+      lng: p.ubicacion.coords?.coordinates?.[0] ?? -58.4,
+      precio_noche: p.precio_noche,
+      cantidad_huespedes: p.cantidad_huespedes,
+      descripcion: p.descripcion || '',
+      servicios: Array.isArray(p.servicios) ? p.servicios.join(', ') : (p.servicios || ''),
+      estado: p.estado,
+      imagen: p.imagen || '',
+    });
+  };
+
+  const cancelEdit = () => setEditing(null);
+
+  const saveEdit = () => run(
+    () => putData(`/propiedades/${editing.id}`, {
+      titulo: editForm.titulo,
+      tipo: editForm.tipo,
+      ubicacion: {
+        ciudad: editForm.ciudad,
+        pais: editForm.pais,
+        direccion: editForm.direccion,
+        coords: { type: 'Point', coordinates: [Number(editForm.lng), Number(editForm.lat)] },
+      },
+      precio_noche: Number(editForm.precio_noche),
+      cantidad_huespedes: Number(editForm.cantidad_huespedes),
+      descripcion: editForm.descripcion,
+      servicios: editForm.servicios.split(',').map(s => s.trim()).filter(Boolean),
+      estado: editForm.estado,
+      imagen: editForm.imagen,
+    }),
+    'Propiedad actualizada'
+  ).then(() => setEditing(null));
 
   const buscarCoordenadas = async () => {
     const query = [form.direccion, form.ciudad, form.pais].filter(Boolean).join(', ');
@@ -113,6 +157,61 @@ export default function Anfitrion() {
       </div>
       <div className="panel"><h3>Reservas recibidas</h3>{received.length ? received.map(r=><div className="miniItem" key={r.id}><div className="dateBox">{r.fecha_inicio.slice(5)}</div><div><b>{r.propiedad?.titulo}</b><p>{r.huesped?.nombre} · {r.estado} · <Money value={r.pago.monto}/></p></div></div>) : <p className="muted">Todavía no recibiste reservas.</p>}</div>
     </section>
-    <section><h3>Mis propiedades</h3><div className="cardsGrid compact">{mine.length ? mine.map(p=><article className="propertyCard" key={p.id}><img src={p.imagen}/><div className="propertyBody"><h3>{p.titulo}</h3><p>{p.ubicacion.ciudad} · <Money value={p.precio_noche}/> · máx {p.cantidad_huespedes}</p><Badge>{p.estado}</Badge><div className="row"><button onClick={()=>run(()=>putData(`/propiedades/${p.id}`,{precio_noche:Number(p.precio_noche)+5000}),'Precio actualizado')}>Subir $5000</button><button className="danger" onClick={()=>run(()=>deleteData(`/propiedades/${p.id}`),'Propiedad eliminada')}>Eliminar</button></div></div></article>) : <EmptyState title="Sin propiedades" text="Publicá la primera propiedad desde el formulario."/>}</div></section>
+    <section>
+      <h3>Mis propiedades</h3>
+      <div className="cardsGrid compact">
+        {mine.length ? mine.map(p =>
+          <article className="propertyCard" key={p.id}>
+            <img src={p.imagen}/>
+            <div className="propertyBody">
+              <h3>{p.titulo}</h3>
+              <p>{p.ubicacion.ciudad} · <Money value={p.precio_noche}/> · máx {p.cantidad_huespedes}</p>
+              <Badge>{p.estado}</Badge>
+              <div className="row">
+                <button onClick={() => startEdit(p)}>Editar</button>
+                <button className="danger" onClick={() => run(() => deleteData(`/propiedades/${p.id}`), 'Propiedad eliminada')}>Eliminar</button>
+              </div>
+            </div>
+          </article>
+        ) : <EmptyState title="Sin propiedades" text="Publicá la primera propiedad desde el formulario."/>}
+      </div>
+    </section>
+
+    {editing && (
+      <section className="panel">
+        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
+          <h3 style={{margin:0}}>Editando: {editing.titulo}</h3>
+          <button className="ghost" onClick={cancelEdit} style={{display:'inline-flex', alignItems:'center', gap:6}}><X size={14}/> Cancelar</button>
+        </div>
+        <div className="formGrid">
+          <Field label="Título"><input value={editForm.titulo} onChange={e => setEditField('titulo', e.target.value)}/></Field>
+          <Field label="Tipo">
+            <select value={editForm.tipo} onChange={e => setEditField('tipo', e.target.value)}>
+              <option>departamento</option><option>casa</option><option>loft</option>
+            </select>
+          </Field>
+          <Field label="Estado">
+            <select value={editForm.estado} onChange={e => setEditField('estado', e.target.value)}>
+              <option value="activa">activa</option>
+              <option value="inactiva">inactiva</option>
+            </select>
+          </Field>
+          <Field label="Ciudad"><input value={editForm.ciudad} onChange={e => setEditField('ciudad', e.target.value)}/></Field>
+          <Field label="País"><input value={editForm.pais} onChange={e => setEditField('pais', e.target.value)}/></Field>
+          <Field label="Dirección"><input value={editForm.direccion} onChange={e => setEditField('direccion', e.target.value)}/></Field>
+          <Field label="Precio por noche"><input type="number" value={editForm.precio_noche} onChange={e => setEditField('precio_noche', e.target.value)}/></Field>
+          <Field label="Capacidad"><input type="number" value={editForm.cantidad_huespedes} onChange={e => setEditField('cantidad_huespedes', e.target.value)}/></Field>
+          <Field label="Servicios (separados por coma)"><input value={editForm.servicios} onChange={e => setEditField('servicios', e.target.value)}/></Field>
+          <Field label="Latitud"><input type="number" step="0.0001" value={editForm.lat} onChange={e => setEditField('lat', e.target.value)}/></Field>
+          <Field label="Longitud"><input type="number" step="0.0001" value={editForm.lng} onChange={e => setEditField('lng', e.target.value)}/></Field>
+        </div>
+        <Field label="Imagen (URL)"><input value={editForm.imagen} onChange={e => setEditField('imagen', e.target.value)}/></Field>
+        <Field label="Descripción"><textarea value={editForm.descripcion} onChange={e => setEditField('descripcion', e.target.value)}/></Field>
+        <div className="row" style={{marginTop:12}}>
+          <button onClick={saveEdit}>Guardar cambios</button>
+          <button className="ghost" onClick={cancelEdit}>Cancelar</button>
+        </div>
+      </section>
+    )}
   </div>;
 }
